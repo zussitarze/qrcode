@@ -11,7 +11,9 @@ QR Code Generator in Racket
 
 
 Command line usage:
+```
 racket -tm qrcode.rkt hw.png 2 H "Hello World"
+```
 
 References:
 
