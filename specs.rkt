@@ -1,25 +1,51 @@
 #lang racket/base
 
+(module+ test
+  (require rackunit))
+
 (require
  racket/contract
  racket/list
  racket/match)
 
+(define error-level/c (one-of/c 'L 'M 'Q 'H))
+(define version/c (integer-in 1 40))
+(define kind/c (one-of/c 'byte))
+
 (provide
  (struct-out spec)
  (contract-out 
-  [lookup-spec (-> (integer-in 1 40) (one-of/c 'L 'M 'Q 'H) spec?)]
-  [version->dimension (-> (integer-in 1 40) number?)]
-  [alignment-coords (-> (integer-in 1 40) list?)]
-  [character-count-bits (-> (integer-in 1 40) number?)]))
+  [lookup-spec (-> version/c error-level/c spec?)]
+  [bestfit (-> bytes? error-level/c kind/c (or/c version/c #f))]
+  [canhold? (-> bytes? version/c error-level/c kind/c boolean?)]
+  [version->dimension (-> version/c number?)]
+  [alignment-coords (-> version/c list?)]
+  [character-count-bits (-> version/c number?)]))
 
-(struct spec (msg-codes ec-codes ec1 ec2 mxnum mxalpha mxbytes mxjanji))
+(struct spec (msg-codes ec-codes ec1 ec2 mxnum mxalpha mxbyte mxjanji))
 
 (define (lookup-spec ver err)
   (apply spec (cdr (assq err (vector-ref spec-tbl (- ver 1))))))
 
 (define (version->dimension v)
   (+ 17 (* 4 v)))
+
+(define (bestfit msg err kind)
+  (let ([sel (case kind [(byte) spec-mxbyte])]
+	[len (bytes-length msg)]) 
+    (for/or ([v (in-range 1 41)])
+      (and (>= (sel (lookup-spec v err)) len)
+	   v))))
+
+(module+ test
+  (check-eqv? (bestfit #"123" 'L 'byte) 1)
+  (check-eqv? (bestfit (make-bytes 1024) 'Q 'byte) 31)
+  (check-eqv? (bestfit (make-bytes 2954) 'L 'byte) #f))
+
+(define (canhold? msg ver err kind)
+  (let ([sel (case kind [(byte) spec-mxbyte])]
+	[len (bytes-length msg)])
+    (>= (sel (lookup-spec ver err)) len)))
 
 (define (alignment-coords v)
   (if (= v 1)

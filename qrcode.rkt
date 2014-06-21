@@ -12,18 +12,23 @@
 	 qrcode-encode
 	 qrcode-render)
 
-(define (main out ver err msg [scale "4"])
+(define (main out err msg [scale "4"])
   (define qr (qrcode-encode (string->bytes/utf-8 msg) 
-			    (string->number ver) 
-			    (string->symbol (string-upcase err))))
+                            (string->symbol (string-upcase err))))
   (send (qrcode-render qr (string->number scale)) 
-	save-file out 'png))
+        save-file out 'png))
 
-(define (qrcode-encode msg ver err)
-  (let ([qr (make-bitarray (version->dimension ver))]
-	[cws (interleave-ec-codewords 
-	      (msg-codewords (bytes->list msg) ver err)
-	      ver err)])
+(define (qrcode-encode msg err #:version [ver 'auto])
+  (let* ([ver (if (eq? ver 'auto)
+                  (or (bestfit msg err 'byte)
+                      (error "Message exceeds QR code capacity"))
+		 (if (canhold? msg ver err 'byte)
+                     ver
+                     (error "Message exceeds version capacity")))]
+         [qr (make-bitarray (version->dimension ver))]
+         [cws (interleave-ec-codewords 
+               (msg-codewords (bytes->list msg) ver err)
+               ver err)])
     (place-timing-patterns qr)
     (place-finder-patterns qr)
     (place-alignment-patterns ver qr)
@@ -38,6 +43,7 @@
       [(list score mask-num qr)
        (place-format-modules qr (format-information err mask-num))
        (when (>= ver 7) (place-version-patterns ver qr))
+       (printf "Ver: ~a Err: ~a~n" ver err)
        qr])))       
 
 (define (qrcode-render qr scale)
