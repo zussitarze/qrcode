@@ -204,14 +204,11 @@
             (list x (+ x 4) y (+ y 4)))))))
 
 (define (can-write? x y excs)
-  (andmap (λ (exc)
-            (match exc
-              [(list cx1 cx2 cy1 cy2) 
-               (or (< x cx1)
-                   (> x cx2)
-                   (< y cy1)
-                   (> y cy2))]))
-          excs))
+  (for/and ([exc (in-list excs)])
+    (let ([cx1 (car exc)] [cx2 (cadr exc)]
+	  [cy1 (caddr exc)] [cy2 (cadddr exc)])
+      (or (< x cx1) (> x cx2)
+	  (< y cy1) (> y cy2)))))
 
 (define (score-qrcode qr)
   (define dim (bitarray-dimension qr))
@@ -224,22 +221,22 @@
                 (scan (+ i 1) (+ acc 1) cur counts)
                 (scan (+ i 1) 0 cur (cons acc counts)))))))
   (define (seek-pattern bit-list)
-    (let ([white '(#f #f #f #f)]
-          [finder '(#t #f #t #t #t #f #t)])
-      (if (or (contains-sublist? bit-list (append white finder))
-              (contains-sublist? bit-list (append finder white)))
+    (let ([pat1 '(#t #f #t #t #t #f #t #f #f #f #f)]
+          [pat2 '(#f #f #f #f #t #f #t #t #t #f #t)])
+      (if (or (contains-sublist? bit-list pat1)
+              (contains-sublist? bit-list pat2))
           1
           0)))
   (let ([adjs (for/sum ([z (in-range dim)])
                 (foldl (λ (c acc)
-                         (if (> c 5)
-                             (+ acc (- 5 c) 3)
-                             acc))  
+			  (if (> c 5)
+			      (+ acc (- 5 c) 3)
+			      acc))  
                        0
                        (append (count-adj (λ (col) 
-                                            (bitarray-get qr col z)))
+					     (bitarray-get qr col z)))
                                (count-adj (λ (row) 
-                                            (bitarray-get qr z row))))))]
+					     (bitarray-get qr z row))))))]
         [blocks (for*/sum ([i (in-range (- dim 1))]
                            [j (in-range (- dim 1))])
                   (if (same? (bitarray-get qr j i)
