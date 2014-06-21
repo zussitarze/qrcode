@@ -12,7 +12,10 @@
          gfpoly*
          gfpoly-remainder
          gfpoly-degree
-         gfpoly-shift)
+         gfpoly-shift
+
+	 gfpoly->string
+	 gf->poly-over-gf2-string)
 
 (define primative-poly 285) ; x^8 + x^4 + x^3 + x^2 + 1
 
@@ -62,16 +65,14 @@
 (define (gfpoly+ a b) 
  (dropf (reverse (add-lists (reverse a) (reverse b))) zero?))
                    
-;; Used in division algorithms
-(define (gfpoly+left a b)
- (dropf (add-lists a b) zero?))
-
 (define (gfpoly-remainder dividend divisor)
+  (define (gfpoly+left a b)
+    (dropf (add-lists a b) zero?))
   (define p (gfpoly-degree divisor))
   (let div ([dividend dividend])
     (if (< (gfpoly-degree dividend) p)
         dividend
-        (div (gfpoly+left (gfpoly-scale divisor (gfpoly-leading-coefficient dividend))
+        (div (gfpoly+left (gfpoly-scale divisor (car dividend))
                           dividend)))))
 
 (define (gfpoly* a b)
@@ -88,9 +89,6 @@
 
 (define (gfpoly-degree p)
   (- (length p) 1))
-
-(define (gfpoly-leading-coefficient p)
-  (car p))
 
 (define (gfpoly-shift p n)
   (append p (make-list n 0)))

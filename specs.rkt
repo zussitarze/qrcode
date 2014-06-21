@@ -47,6 +47,13 @@
         [len (bytes-length msg)])
     (>= (sel (lookup-spec ver err)) len)))
 
+(define (character-count-bits ver)
+  ;; todo: This shouldn't be hardcoded to bytes.
+  (match (cond [(<= ver 9)  '(10 9 8 8)]
+               [(<= ver 26) '(12 11 16 10)]
+               [(<= ver 40) '(14 13 16 12)])
+    [(list num alph byte kanji) byte]))
+
 (define (alignment-coords v)
   (if (= v 1)
       '()
@@ -267,9 +274,4 @@
     (6  30  58  86  114  142  170)))
 
 
-(define (character-count-bits ver)
-  ;; todo: This shouldn't be hardcoded to bytes.
-  (match (cond [(<= ver 9)  '(10 9 8 8)]
-               [(<= ver 26) '(12 11 16 10)]
-               [(<= ver 40) '(14 13 16 12)])
-    [(list num alph byte kanji) byte]))
+
