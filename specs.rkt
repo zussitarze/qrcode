@@ -4,9 +4,9 @@
   (require rackunit))
 
 (require
- racket/contract
- racket/list
- racket/match)
+  racket/contract
+  racket/list
+  racket/match)
 
 (define error-level/c (one-of/c 'L 'M 'Q 'H))
 (define version/c (integer-in 1 40))
@@ -32,10 +32,10 @@
 
 (define (bestfit msg err kind)
   (let ([sel (case kind [(byte) spec-mxbyte])]
-	[len (bytes-length msg)]) 
+        [len (bytes-length msg)]) 
     (for/or ([v (in-range 1 41)])
       (and (>= (sel (lookup-spec v err)) len)
-	   v))))
+           v))))
 
 (module+ test
   (check-eqv? (bestfit #"123" 'L 'byte) 1)
@@ -44,7 +44,7 @@
 
 (define (canhold? msg ver err kind)
   (let ([sel (case kind [(byte) spec-mxbyte])]
-	[len (bytes-length msg)])
+        [len (bytes-length msg)])
     (>= (sel (lookup-spec ver err)) len)))
 
 (define (alignment-coords v)
@@ -270,6 +270,6 @@
 (define (character-count-bits ver)
   ;; todo: This shouldn't be hardcoded to bytes.
   (match (cond [(<= ver 9)  '(10 9 8 8)]
-	       [(<= ver 26) '(12 11 16 10)]
-	       [(<= ver 40) '(14 13 16 12)])
+               [(<= ver 26) '(12 11 16 10)]
+               [(<= ver 40) '(14 13 16 12)])
     [(list num alph byte kanji) byte]))

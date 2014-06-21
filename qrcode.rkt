@@ -1,16 +1,16 @@
 #lang racket/base
 
 (require racket/draw
-	 racket/match
-	 racket/class
-	 racket/list
-	 "bitarray.rkt"
+         racket/match
+         racket/class
+         racket/list
+         "bitarray.rkt"
          "coding.rkt"
          "specs.rkt")
 
 (provide main
-	 qrcode-encode
-	 qrcode-render)
+         qrcode-encode
+         qrcode-render)
 
 (define (main out err msg [scale "4"])
   (define qr (qrcode-encode (string->bytes/utf-8 msg) 
@@ -22,9 +22,9 @@
   (let* ([ver (if (eq? ver 'auto)
                   (or (bestfit msg err 'byte)
                       (error "Message exceeds QR code capacity"))
-		 (if (canhold? msg ver err 'byte)
-                     ver
-                     (error "Message exceeds version capacity")))]
+                  (if (canhold? msg ver err 'byte)
+                      ver
+                      (error "Message exceeds version capacity")))]
          [qr (make-bitarray (version->dimension ver))]
          [cws (interleave-ec-codewords 
                (msg-codewords (bytes->list msg) ver err)
@@ -34,12 +34,12 @@
     (place-alignment-patterns ver qr)
     (place-data-modules ver qr cws)
     (match (car (sort (for/list ([f mask-generators]
-				 [num (in-naturals 0)])
-			(let ([qrc (bitarray-clone qr)])
-			  (apply-mask ver qrc f)
-			  (list (score-qrcode qrc) num qrc)))
-		      <
-		      #:key car))
+                                 [num (in-naturals 0)])
+                        (let ([qrc (bitarray-clone qr)])
+                          (apply-mask ver qrc f)
+                          (list (score-qrcode qrc) num qrc)))
+                      <
+                      #:key car))
       [(list score mask-num qr)
        (place-format-modules qr (format-information err mask-num))
        (when (>= ver 7) (place-version-patterns ver qr))
@@ -60,33 +60,33 @@
 (define (msg-codewords msg-bs ver err)
   (let* ([num-codes (spec-msg-codes (lookup-spec ver err))]
          [mode (byte->bits #b0100 4)]
-	 [count-bits (character-count-bits ver)]
+         [count-bits (character-count-bits ver)]
          [chars (byte->bits (length msg-bs) count-bits)]
          [msg-bits (bytes->bits msg-bs)]
          [terminator (byte->bits 0 (min 4 (- (* num-codes 8) 4 count-bits (length msg-bits))))]
          [data (bits->bytes (append mode chars msg-bits terminator))])
     (append data (build-list (- num-codes (length data))
                              (λ (i)                               
-				(if (even? i)
-				    #b11101100
-				    #b00010001))))))
+                               (if (even? i)
+                                   #b11101100
+                                   #b00010001))))))
 
 (define (interleave-ec-codewords msgcodes ver err)
   (let* ([s (lookup-spec ver err)]
-	 [ec1 (spec-ec1 s)]
-	 [ec2 (spec-ec2 s)]
-	 [p (/ (spec-ec-codes s) 
-	       (+ ec1 ec2))]
-	 [k (/ (- (spec-msg-codes s) ec2)
-	       (+ ec1 ec2))]
-	 [gen (reed-solomon-generator p)])
+         [ec1 (spec-ec1 s)]
+         [ec2 (spec-ec2 s)]
+         [p (/ (spec-ec-codes s) 
+               (+ ec1 ec2))]
+         [k (/ (- (spec-msg-codes s) ec2)
+               (+ ec1 ec2))]
+         [gen (reed-solomon-generator p)])
     (let* ([blks (let*-values ([(blks1 restcodes) (chunk-list msgcodes k ec1)]
-			       [(blks2 _) (chunk-list restcodes (+ k 1) ec2)]) 
-		   (append blks1 blks2))]
-	   [ec-blks (map (λ (m) (reed-solomon-encode m gen #f)) blks)])
+                               [(blks2 _) (chunk-list restcodes (+ k 1) ec2)]) 
+                   (append blks1 blks2))]
+           [ec-blks (map (λ (m) (reed-solomon-encode m gen #f)) blks)])
       (append (interleave-lists blks)
-	      (interleave-lists ec-blks)))))
-    
+              (interleave-lists ec-blks)))))
+
 (define (format-information err mask-num)
   (let* ([errbits (case err
                     [(L) '(0 1)]
@@ -115,13 +115,13 @@
 
 (define (place-version-patterns ver qr)
   (let ([vbits (golay-encode-QR (map (λ (x) (if x 1 0)) (byte->bits ver 6)))]
-	[offset (- (bitarray-dimension qr) 11)])
+        [offset (- (bitarray-dimension qr) 11)])
     (for*/fold ([bs vbits])
-	([j (in-range 5 -1 -1)]
-	 [i (in-range 2 -1 -1)])
+      ([j (in-range 5 -1 -1)]
+       [i (in-range 2 -1 -1)])
       (when (= 1 (car bs))
-	(bitarray-set qr j (+ i offset))
-	(bitarray-set qr (+ i offset) j))
+        (bitarray-set qr j (+ i offset))
+        (bitarray-set qr (+ i offset) j))
       (cdr bs))))
 
 (define (place-data-modules ver qr bs)
@@ -132,25 +132,25 @@
              [row (- dim 1)] [dir -1])
     (unless (null? bits)
       (cond 
-       [(< row 0) 
-	(loop bits (- col 2) right? 0 1)]
-       [(>= row dim) 
-	(loop bits (- col 2) right? (- dim 1) -1)]
-       [(= col 6)
-	(loop bits (- col 1) right? row dir)]
-       [(< col 0)
-	(error "Column out of bounds" col)]
-       [else 
-	(let* ([x (if (or right? (= col 0)) 
-		      col 
-		      (- col 1))]
-	       [rest-bits (if (can-write? x row exclusions)
-			      (begin (bitarray-set qr x row (car bits))
-				     (cdr bits))
-			      bits)])
-	  (if (and right? (> col 0))
-	      (loop rest-bits col #f row dir)
-	      (loop rest-bits col #t (+ row dir) dir)))]))))
+        [(< row 0) 
+         (loop bits (- col 2) right? 0 1)]
+        [(>= row dim) 
+         (loop bits (- col 2) right? (- dim 1) -1)]
+        [(= col 6)
+         (loop bits (- col 1) right? row dir)]
+        [(< col 0)
+         (error "Column out of bounds" col)]
+        [else 
+         (let* ([x (if (or right? (= col 0)) 
+                       col 
+                       (- col 1))]
+                [rest-bits (if (can-write? x row exclusions)
+                               (begin (bitarray-set qr x row (car bits))
+                                      (cdr bits))
+                               bits)])
+           (if (and right? (> col 0))
+               (loop rest-bits col #f row dir)
+               (loop rest-bits col #t (+ row dir) dir)))]))))
 
 (define (place-format-modules qr bits)
   (define dim (bitarray-dimension qr))
@@ -194,23 +194,23 @@
       (6 6 0 ,(- d 1))
       ;; Version information
       ,@(if (< ver 7)
-	    '()
-	    `((0 5 ,(- d 11) ,(- d 9))
-	      (,(- d 11) ,(- d 9) 0 5)))
+            '()
+            `((0 5 ,(- d 11) ,(- d 9))
+              (,(- d 11) ,(- d 9) 0 5)))
       ;; Alignment patterns
       ,@(for/list ([c (in-list (alignment-coords ver))])
-	  (let ([x (car c)]
-		[y (cdr c)])
-	    (list x (+ x 4) y (+ y 4)))))))
+          (let ([x (car c)]
+                [y (cdr c)])
+            (list x (+ x 4) y (+ y 4)))))))
 
 (define (can-write? x y excs)
   (andmap (λ (exc)
-	     (match exc
-	       [(list cx1 cx2 cy1 cy2) 
-		(or (< x cx1)
-		    (> x cx2)
-		    (< y cy1)
-		    (> y cy2))]))
+            (match exc
+              [(list cx1 cx2 cy1 cy2) 
+               (or (< x cx1)
+                   (> x cx2)
+                   (< y cy1)
+                   (> y cy2))]))
           excs))
 
 (define (score-qrcode qr)
@@ -232,14 +232,14 @@
           0)))
   (let ([adjs (for/sum ([z (in-range dim)])
                 (foldl (λ (c acc)
-			  (if (> c 5)
-			      (+ acc (- 5 c) 3)
-			      acc))  
+                         (if (> c 5)
+                             (+ acc (- 5 c) 3)
+                             acc))  
                        0
                        (append (count-adj (λ (col) 
-					     (bitarray-get qr col z)))
+                                            (bitarray-get qr col z)))
                                (count-adj (λ (row) 
-					     (bitarray-get qr z row))))))]
+                                            (bitarray-get qr z row))))))]
         [blocks (for*/sum ([i (in-range (- dim 1))]
                            [j (in-range (- dim 1))])
                   (if (same? (bitarray-get qr j i)
@@ -274,22 +274,22 @@
 
 (define (same? x . xs)
   (andmap (λ (y) 
-	     (eq? x y))
+            (eq? x y))
           xs))  
 
 (define (chunk-list lst size count)
   (let loop ([lst lst] [count count] [acc '()]) 
     (if (or (null? lst) (= count 0)) 
-	(values (reverse acc) lst)
-	(let-values ([(c r) (split-at lst size)])
+        (values (reverse acc) lst)
+        (let-values ([(c r) (split-at lst size)])
           (loop r (- count 1) (cons c acc))))))
 
 (define (interleave-lists lol)
   (let ([lol (filter (λ (l) (not (null? l))) lol)])
     (if (null? lol)
-	'()
-	(append (map car lol)
-		(interleave-lists (map cdr lol))))))
+        '()
+        (append (map car lol)
+                (interleave-lists (map cdr lol))))))
 
 (define (byte->bits b [n 8])
   (let loop ([b b] [n n] [acc '()])
@@ -319,19 +319,19 @@
 
 (define finder-pattern 
   (list #b01111111
-	#b01000001
-	#b01011101
-	#b01011101
-	#b01011101
-	#b01000001
-	#b01111111))
+        #b01000001
+        #b01011101
+        #b01011101
+        #b01011101
+        #b01000001
+        #b01111111))
 
 (define alignment-pattern 
   (list #b00011111
-	#b00010001
-	#b00010101
-	#b00010001
-	#b00011111))
+        #b00010001
+        #b00010101
+        #b00010001
+        #b00011111))
 
 (define mask-generators 
   (list (λ (i j) (= 0 (modulo (+ i j) 2)))
