@@ -4,15 +4,13 @@ qrcode
 QR Code Generator in Racket
 
 - Encoding only 
-- QR model 2 codes
-- Supports all versions (1-40)
+- QR model 2 codes, versions (1-40)
 - Only byte mode supported presently
-- Does not encode micro QR codes
 
 
 Command line usage:
 ```
-racket -tm qrcode.rkt hw.png 2 H "Hello World"
+racket qrcode.rkt -l Q hello.png Hello QR World
 ```
 
 References:

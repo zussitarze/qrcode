@@ -8,15 +8,27 @@
          "coding.rkt"
          "specs.rkt")
 
-(provide main
-         qrcode-encode
+(provide qrcode-encode
          qrcode-render)
 
-(define (main out err msg [scale "4"])
-  (define qr (qrcode-encode (string->bytes/utf-8 msg) 
-                            (string->symbol (string-upcase err))))
-  (send (qrcode-render qr (string->number scale)) 
-        save-file out 'png))
+(module+ main
+  (require racket/cmdline)
+  (require racket/string)
+  (define error-level (make-parameter 'M))
+  (define scale (make-parameter 4))  
+  (command-line 
+    #:program "qrcode"
+    #:once-each 
+    [("-l" "--errorlevel") lvl 
+     "Error correction level: (L)ow, (M)edium, (Q)uartile, (H)igh (default M)"
+      (error-level (string->symbol (string-upcase lvl)))]
+    [("-s" "--scale") s "Pixel scale factor (default 4)"
+      (scale (string->number s))]    
+    #:args (filename . message)
+    (let* ([message (string->bytes/utf-8 (string-join message))]
+           [qr (qrcode-encode message (error-level))])
+      (send (qrcode-render qr (scale)) save-file filename 'png)
+      (void))))
 
 (define (qrcode-encode msg err #:version [ver 'auto])
   (let* ([ver (if (eq? ver 'auto)
@@ -43,7 +55,7 @@
       [(list score mask-num qr)
        (place-format-modules qr (format-information err mask-num))
        (when (>= ver 7) (place-version-patterns ver qr))
-       (printf "Ver: ~a Err: ~a~n" ver err)
+       ;(printf "Ver: ~a Err: ~a~n" ver err)
        qr])))       
 
 (define (qrcode-render qr scale)

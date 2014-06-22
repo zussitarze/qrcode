@@ -10,14 +10,14 @@
 
 (define error-level/c (one-of/c 'L 'M 'Q 'H))
 (define version/c (integer-in 1 40))
-(define kind/c (one-of/c 'byte))
+(define mode/c (one-of/c 'byte))
 
 (provide
  (struct-out spec)
  (contract-out 
   [lookup-spec (-> version/c error-level/c spec?)]
-  [bestfit (-> bytes? error-level/c kind/c (or/c version/c #f))]
-  [canhold? (-> bytes? version/c error-level/c kind/c boolean?)]
+  [bestfit (-> bytes? error-level/c mode/c (or/c version/c #f))]
+  [canhold? (-> bytes? version/c error-level/c mode/c boolean?)]
   [version->dimension (-> version/c number?)]
   [alignment-coords (-> version/c list?)]
   [character-count-bits (-> version/c number?)]))
@@ -30,8 +30,8 @@
 (define (version->dimension v)
   (+ 17 (* 4 v)))
 
-(define (bestfit msg err kind)
-  (let ([sel (case kind [(byte) spec-mxbyte])]
+(define (bestfit msg err mode)
+  (let ([sel (case mode [(byte) spec-mxbyte])]
         [len (bytes-length msg)]) 
     (for/or ([v (in-range 1 41)])
       (and (>= (sel (lookup-spec v err)) len)
@@ -42,8 +42,8 @@
   (check-eqv? (bestfit (make-bytes 1024) 'Q 'byte) 31)
   (check-eqv? (bestfit (make-bytes 2954) 'L 'byte) #f))
 
-(define (canhold? msg ver err kind)
-  (let ([sel (case kind [(byte) spec-mxbyte])]
+(define (canhold? msg ver err mode)
+  (let ([sel (case mode [(byte) spec-mxbyte])]
         [len (bytes-length msg)])
     (>= (sel (lookup-spec ver err)) len)))
 
