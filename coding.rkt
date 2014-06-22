@@ -25,8 +25,8 @@
          [shifted-msg (gfpoly-shift msg p)]
          [parity (ensure-length p (gfpoly-remainder shifted-msg gen))])
     (if systemic?
-	(gfpoly+ shifted-msg parity)
-	parity)))
+        (gfpoly+ shifted-msg parity)
+        parity)))
 
 ;; Performs BCH (15,5) encoding with mask for QR format bits.
 (define (bch-encode-QR msg)
@@ -34,7 +34,8 @@
          [shifted-msg (gfpoly-shift msg 10)]
          [parity (gfpoly-remainder shifted-msg gen)])
     (ensure-length 15 
-                   (gfpoly+ (gfpoly+ shifted-msg parity)
+                   (gfpoly+ shifted-msg 
+                            parity
                             '(1 0 1 0 1 0 0 0 0 0 1 0 0 1 0)))))
 
 ;; Performs Golay (18,6) encoding for QR version bits
@@ -43,7 +44,7 @@
          [shifted-msg (gfpoly-shift msg 12)]
          [parity (gfpoly-remainder shifted-msg gen)])
     (ensure-length 18 (gfpoly+ shifted-msg parity))))
-  
+
 ;; left pads lists with 0s as necessary
 (define (ensure-length p l)
   (if (< (length l) p)

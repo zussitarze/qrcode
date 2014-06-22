@@ -13,9 +13,9 @@
          gfpoly-remainder
          gfpoly-degree
          gfpoly-shift
-
-	 gfpoly->string
-	 gf->poly-over-gf2-string)
+         
+         gfpoly->string
+         gf->poly-over-gf2-string)
 
 (define primative-poly 285) ; x^8 + x^4 + x^3 + x^2 + 1
 
@@ -32,9 +32,9 @@
         (vector-set! exp-tbl (+ i 255) a)
         (arithmetic-shift a 1)))
     (values (λ (x)
-               (vector-ref log-tbl x))
+              (vector-ref log-tbl x))
             (λ (x)
-               (vector-ref exp-tbl x)))))
+              (vector-ref exp-tbl x)))))
 
 (define (gf+ x y)
   (bitwise-xor x y))
@@ -57,14 +57,18 @@
 ;; term degree.
 
 (define (add-lists l1 l2)
- (cond [(null? l1) l2]
-       [(null? l2) l1]
-       [else (cons (gf+ (car l1) (car l2))
-                   (add-lists (cdr l1) (cdr l2)))]))
+  (cond [(null? l1) l2]
+        [(null? l2) l1]
+        [else (cons (gf+ (car l1) (car l2))
+                    (add-lists (cdr l1) (cdr l2)))]))
 
-(define (gfpoly+ a b) 
- (dropf (reverse (add-lists (reverse a) (reverse b))) zero?))
-                   
+(define gfpoly+ 
+  (case-lambda 
+    [(a b)
+     (dropf (reverse (add-lists (reverse a) (reverse b))) zero?)]
+    [(a . rst)
+     (foldl gfpoly+ a rst)]))
+
 (define (gfpoly-remainder dividend divisor)
   (define (gfpoly+left a b)
     (dropf (add-lists a b) zero?))
@@ -88,7 +92,7 @@
   (dropf (map (lambda (t) (gf* t x)) p) zero?))
 
 (define (gfpoly-degree p)
-  (- (length p) 1))
+  (max 0 (- (length p) 1)))
 
 (define (gfpoly-shift p n)
   (append p (make-list n 0)))
@@ -122,12 +126,12 @@
       "0"
       (let loop ([x x] [i 0] [terms '()])
         (cond 
-         [(= x 0) (string-join terms " + ")]
-         [else (loop (arithmetic-shift x -1) 
-                     (+ i 1)
-                     (if (bitwise-bit-set? x 0)
-                         (let ([t (cond [(> i 1) (format "x^~s" i)]
-                                        [(= 0 i) "1"]
-                                        [(= 1 i) "x"])])
-                           (cons t terms))
-                         terms))]))))
+          [(= x 0) (string-join terms " + ")]
+          [else (loop (arithmetic-shift x -1) 
+                      (+ i 1)
+                      (if (bitwise-bit-set? x 0)
+                          (let ([t (cond [(> i 1) (format "x^~s" i)]
+                                         [(= 0 i) "1"]
+                                         [(= 1 i) "x"])])
+                            (cons t terms))
+                          terms))]))))

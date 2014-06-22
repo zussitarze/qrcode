@@ -14,9 +14,9 @@
   make-bitarray
   bitarray-clone
   bitarray-blit
-  bitarray-set
+  bitarray-set!
   bitarray-get
-  bitarray-toggle)
+  bitarray-toggle!)
 
 
 ;; bits are written in low to high order for combatability with monochrome bitmaps,
@@ -49,7 +49,7 @@
                     (fxior d (arithmetic-shift s (+ -8 bit-offset))))))
     (+ i (bitarray-row-width dest))))
 
-(define (bitarray-set dest x y [val #t])
+(define (bitarray-set! dest x y [val #t])
   (define-values (byte-idx bit-offset) (bitarray-indexes dest x y))
   (define target (bytes-ref (bitarray-data dest) byte-idx))  
   (bytes-set! (bitarray-data dest) byte-idx
@@ -61,7 +61,7 @@
   (define-values (byte-idx bit-offset) (bitarray-indexes dest x y))
   (bitwise-bit-set? (bytes-ref (bitarray-data dest) byte-idx) bit-offset))
 
-(define (bitarray-toggle dest x y)
+(define (bitarray-toggle! dest x y)
   (define-values (byte-idx bit-offset) (bitarray-indexes dest x y))
   (define target (bytes-ref (bitarray-data dest) byte-idx))  
   (bytes-set! (bitarray-data dest) byte-idx

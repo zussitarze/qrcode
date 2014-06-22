@@ -17,18 +17,18 @@
   (define error-level (make-parameter 'M))
   (define scale (make-parameter 4))  
   (command-line 
-    #:program "qrcode"
-    #:once-each 
-    [("-l" "--errorlevel") lvl 
-     "Error correction level: (L)ow, (M)edium, (Q)uartile, (H)igh (default M)"
-      (error-level (string->symbol (string-upcase lvl)))]
-    [("-s" "--scale") s "Pixel scale factor (default 4)"
-      (scale (string->number s))]    
-    #:args (filename . message)
-    (let* ([message (string->bytes/utf-8 (string-join message))]
-           [qr (qrcode-encode message (error-level))])
-      (send (qrcode-render qr (scale)) save-file filename 'png)
-      (void))))
+   #:program "qrcode"
+   #:once-each 
+   [("-l" "--errorlevel") lvl 
+                          "Error correction level: (L)ow, (M)edium, (Q)uartile, (H)igh (default M)"
+                          (error-level (string->symbol (string-upcase lvl)))]
+   [("-s" "--scale") s "Pixel scale factor (default 4)"
+                     (scale (string->number s))]    
+   #:args (filename . message)
+   (let* ([message (string->bytes/utf-8 (string-join message))]
+          [qr (qrcode-encode message (error-level))])
+     (send (qrcode-render qr (scale)) save-file filename 'png)
+     (void))))
 
 (define (qrcode-encode msg err #:version [ver 'auto])
   (let* ([ver (if (eq? ver 'auto)
@@ -91,13 +91,13 @@
                (+ ec1 ec2))]
          [k (/ (- (spec-msg-codes s) ec2)
                (+ ec1 ec2))]
-         [gen (reed-solomon-generator p)])
-    (let* ([blks (let*-values ([(blks1 restcodes) (chunk-list msgcodes k ec1)]
-                               [(blks2 _) (chunk-list restcodes (+ k 1) ec2)]) 
-                   (append blks1 blks2))]
-           [ec-blks (map (λ (m) (reed-solomon-encode m gen #f)) blks)])
-      (append (interleave-lists blks)
-              (interleave-lists ec-blks)))))
+         [gen (reed-solomon-generator p)]
+         [blks (let*-values ([(blks1 restcodes) (chunk-list msgcodes k ec1)]
+                             [(blks2 _) (chunk-list restcodes (+ k 1) ec2)])
+                 (append blks1 blks2))]
+         [ec-blks (map (λ (m) (reed-solomon-encode m gen #f)) blks)])
+    (append (interleave-lists blks)
+            (interleave-lists ec-blks))))
 
 (define (format-information err mask-num)
   (let* ([errbits (case err
@@ -112,8 +112,8 @@
 (define (place-timing-patterns qr)
   (define s (bitarray-dimension qr))
   (for ([i (in-range 8 (- s 8))])
-    (bitarray-set qr i 6 (even? i))
-    (bitarray-set qr 6 i (even? i))))
+    (bitarray-set! qr i 6 (even? i))
+    (bitarray-set! qr 6 i (even? i))))
 
 (define (place-finder-patterns qr)
   (let ([dim (bitarray-dimension qr)])
@@ -132,8 +132,8 @@
       ([j (in-range 5 -1 -1)]
        [i (in-range 2 -1 -1)])
       (when (= 1 (car bs))
-        (bitarray-set qr j (+ i offset))
-        (bitarray-set qr (+ i offset) j))
+        (bitarray-set! qr j (+ i offset))
+        (bitarray-set! qr (+ i offset) j))
       (cdr bs))))
 
 (define (place-data-modules ver qr bs)
@@ -157,7 +157,7 @@
                        col 
                        (- col 1))]
                 [rest-bits (if (can-write? x row exclusions)
-                               (begin (bitarray-set qr x row (car bits))
+                               (begin (bitarray-set! qr x row (car bits))
                                       (cdr bits))
                                bits)])
            (if (and right? (> col 0))
@@ -170,19 +170,19 @@
   ;; Left corner
   (for ([j (in-list '(0 1 2 3 4 5 7))]
         [b (in-list hbs)])
-    (bitarray-set qr j 8 b))
+    (bitarray-set! qr j 8 b))
   (for ([i (in-list '(8 7 5 4 3 2 1 0))]
         [b (in-list lbs)])
-    (bitarray-set qr 8 i b))
+    (bitarray-set! qr 8 i b))
   ;; dark
-  (bitarray-set qr 8 (- dim 8) #t)
+  (bitarray-set! qr 8 (- dim 8) #t)
   ;; Split corners
   (for ([i (in-range 1 9)]
         [b (in-list hbs)])
-    (bitarray-set qr 8 (- dim i) b))  
+    (bitarray-set! qr 8 (- dim i) b))  
   (for ([j (in-range 8 0 -1)]
         [b (in-list lbs)])
-    (bitarray-set qr (- dim j) 8 b)))
+    (bitarray-set! qr (- dim j) 8 b)))
 
 (define (apply-mask ver qr maskfn)
   (define d (bitarray-dimension qr))
@@ -191,7 +191,7 @@
          [j (in-range 0 d)])
     (when (and (maskfn i j)
                (can-write? j i excs))
-      (bitarray-toggle qr j i))))
+      (bitarray-toggle! qr j i))))
 
 ;; returns a list of constraints, where each constraint (x1 x2 y1 y2) demarcates
 ;; an exclusion zone.
@@ -218,9 +218,9 @@
 (define (can-write? x y excs)
   (for/and ([exc (in-list excs)])
     (let ([cx1 (car exc)] [cx2 (cadr exc)]
-	  [cy1 (caddr exc)] [cy2 (cadddr exc)])
+                          [cy1 (caddr exc)] [cy2 (cadddr exc)])
       (or (< x cx1) (> x cx2)
-	  (< y cy1) (> y cy2)))))
+          (< y cy1) (> y cy2)))))
 
 (define (score-qrcode qr)
   (define dim (bitarray-dimension qr))
@@ -241,14 +241,14 @@
           0)))
   (let ([adjs (for/sum ([z (in-range dim)])
                 (foldl (λ (c acc)
-			  (if (> c 5)
-			      (+ acc (- 5 c) 3)
-			      acc))  
+                         (if (> c 5)
+                             (+ acc (- 5 c) 3)
+                             acc))  
                        0
                        (append (count-adj (λ (col) 
-					     (bitarray-get qr col z)))
+                                            (bitarray-get qr col z)))
                                (count-adj (λ (row) 
-					     (bitarray-get qr z row))))))]
+                                            (bitarray-get qr z row))))))]
         [blocks (for*/sum ([i (in-range (- dim 1))]
                            [j (in-range (- dim 1))])
                   (if (same? (bitarray-get qr j i)
