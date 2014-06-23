@@ -5,7 +5,7 @@ QR Code Generator in Racket
 
 - Encoding only 
 - QR model 2 codes, versions (1-40)
-- Byte and numeric modes supported
+- Byte, numeric and alphanumeric modes supported
 
 
 Command line usage:
