@@ -10,7 +10,7 @@
          
          gfpoly+
          gfpoly*
-         gfpoly-remainder
+         gfpoly-monic-remainder
          gfpoly-degree
          gfpoly-shift
          
@@ -69,7 +69,8 @@
     [(a . rst)
      (foldl gfpoly+ a rst)]))
 
-(define (gfpoly-remainder dividend divisor)
+;; Assumes divisor is a monic polynomial
+(define (gfpoly-monic-remainder dividend divisor)
   (define (gfpoly+left a b)
     (dropf (add-lists a b) zero?))
   (define p (gfpoly-degree divisor))
