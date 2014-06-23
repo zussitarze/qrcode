@@ -18,11 +18,13 @@
 (provide 
  (struct-out configuration)
  (contract-out 
-  [qrcode-encode (->* (string? error-level/c) 
-		      (#:version (or/c boolean? version/c))
-		      (values bitarray? configuration?))]
+  [qrcode-encode (-> string? error-level/c 
+                     (values bitarray? configuration?))]
   [qrcode-render (-> bitarray? exact-positive-integer? 
-		     (is-a?/c bitmap%))]))
+                     (is-a?/c bitmap%))]
+  [make-qrcode (->* (string? error-level/c)
+                    (exact-positive-integer?)
+                    (is-a?/c bitmap%))]))
 
 (module+ main
   (require racket/cmdline)
@@ -33,22 +35,22 @@
    #:program "qrcode"
    #:once-each 
    [("-l" "--errorlevel") lvl 
-    "Error correction level: (L)ow, (M)edium, (Q)uartile, (H)igh (default M)"
-    (error-level (string->symbol (string-upcase lvl)))]
+                          "Error correction level: (L)ow, (M)edium, (Q)uartile, (H)igh (default M)"
+                          (error-level (string->symbol (string-upcase lvl)))]
    [("-s" "--scale") s
-    "Pixel scale factor (default 4)"
-    (scale (string->number s))]    
+                     "Pixel scale factor (default 4)"
+                     (scale (string->number s))]    
    #:args (filename . message)
    (let*-values ([(message) (string-join message)]
-		 [(qr config) (qrcode-encode message (error-level))])
+                 [(qr config) (qrcode-encode message (error-level))])
      (send (qrcode-render qr (scale)) save-file filename 'png)
      config)))
 
-(define (qrcode-encode msg-string err #:version [version-hint #f] #:mode [mode-hint #f])
-  (let* ([config (make-configuration msg-string err version-hint mode-hint)]
+(define (qrcode-encode msg-string err)
+  (let* ([config (make-configuration msg-string err)]
          [ver (configuration-version config)]
          [qr (make-bitarray (version->dimension ver))]
-	 [mcws (msg-codewords msg-string config)]
+         [mcws (msg-codewords msg-string config)]
          [ecws (interleave-ec-codewords mcws config)])
     (place-timing-patterns qr)
     (place-finder-patterns qr)
@@ -77,115 +79,102 @@
     (send dc draw-bitmap (make-monochrome-bitmap dim dim (bitarray-data qr)) 4 4)
     bitmap))
 
+(define (make-qrcode msg-string err [scale 4])
+  (define-values (qr _) (qrcode-encode msg-string err))
+  (qrcode-render qr scale))
+
 (struct configuration (version error mode) #:transparent)
 
-(define (make-configuration msg-string error ver-hint mode-hint)
-  (let* ([mode (or mode-hint
-		   (cond 
-		    [(match-numeric? msg-string) 'numeric]
-		    [(match-alphanumeric? msg-string) 'alphanumeric]		    
-		    [else 'byte]))]
-	 [version (best-version (string-length msg-string) error mode)])
-    (configuration version error mode)))
+(define (make-configuration msg-string err)
+  (let* ([mode (cond [(regexp-match-exact? #rx"[0-9]+" msg-string) 'numeric]
+                     [(regexp-match-exact? #rx"[0-9A-Z $%*+-./:]+" msg-string) 'alphanumeric]		    
+                     [else 'byte])]
+         [ver (fit-version (string-length msg-string) err mode)])
+    (if ver
+        (configuration ver err mode)
+        (raise-user-error 
+         'Error "Data length ~a exceeds QR code capacity. (mode: ~a) (error-level: ~a)"
+         (string-length msg-string) mode err))))
 
 (define (encode-message msg-string mode)
   (case mode
     [(numeric) 
      (let*-values 
-	 ([(q r) (quotient/remainder (string-length msg-string) 3)]
-	  [(trips rest) (chunk-list (string->list msg-string) 3 q)]
-	  [(f) (λ (b) 
-		  (λ (l) (number->bits (string->number (list->string l)) b)))])
+         ([(q r) (quotient/remainder (string-length msg-string) 3)]
+          [(trips rest) (chunk-list (string->list msg-string) 3 q)]
+          [(f) (λ (b) 
+                 (λ (l) (number->bits (string->number (list->string l)) b)))])
        (append (append-map (f 10) trips)
-	       (case r
-		 [(0) '()]
-		 [(1) ((f 4) rest)]
-		 [(2) ((f 7) rest)])))]
+               (case r
+                 [(0) '()]
+                 [(1) ((f 4) rest)]
+                 [(2) ((f 7) rest)])))]
     [(alphanumeric) 
      (let*-values 
-	 ([(q r) (quotient/remainder (string-length msg-string) 2)]
-	  [(pairs lone) (chunk-list (string->list msg-string) 2 q)]
-	  [(code) (λ (x) (hash-ref alphanumeric-tbl x))])
+         ([(q r) (quotient/remainder (string-length msg-string) 2)]
+          [(pairs lone) (chunk-list (string->list msg-string) 2 q)]
+          [(code) (λ (x) (hash-ref alphanumeric-tbl x))])
        (append (append-map 
-		(λ (l) 
-		   (number->bits (+ (* 45 (code (car l))) (code (cadr l))) 11))
-		pairs)
-	       (if (= r 1) 
-		   (number->bits (code (car lone)) 6)
-		   '())))]
+                (λ (l) 
+                  (number->bits (+ (* 45 (code (car l))) (code (cadr l))) 11))
+                pairs)
+               (if (= r 1) 
+                   (number->bits (code (car lone)) 6)
+                   '())))]
     [(byte) 
      (bytes->bits (bytes->list (string->bytes/latin-1 msg-string)))]))
 
 (module+ test
   (check-equal? (encode-message "01234567" 'numeric)
-		'(#f #f #f #f #f #f #t #t #f #f #f #t #f #t #f #t #t #f #f #t #t #f #f #f #f #t #t))
+                '(#f #f #f #f #f #f #t #t #f #f #f #t #f #t #f #t #t #f #f #t #t #f #f #f #f #t #t))
   (check-equal? (encode-message "AC-42" 'alphanumeric)
-		'(#f #f #t #t #t #f #f #t #t #t #f #t #t #t #f #f #t #t #t #f #f #t #f #f #f #f #t #f)))
+                '(#f #f #t #t #t #f #f #t #t #t #f #t #t #t #f #f #t #t #t #f #f #t #f #f #f #f #t #f)))
 
 (define (msg-codewords msg-string config)
   (match-let* ([(configuration ver err mode) config]
-	       [ncodes (spec-msg-codes (lookup-spec ver err))]
-	       [data-bits (append (number->bits (case mode
-						  [(numeric)      #b0001]
-						  [(alphanumeric) #b0010]
-						  [(byte)         #b0100])
-						4)
-				  (number->bits (string-length msg-string) (character-count-bits ver mode))
-				  (encode-message msg-string mode)
-				  (number->bits 0 4))]
-	       [data (bits->bytes data-bits)]
-	       [data (take data (min ncodes (length data)))])
-	      (append data
-		      (build-list (- ncodes (length data))
-				  (λ (i)                               
-				     (if (even? i)
-					 #b11101100
-					 #b00010001))))))
+               [ncodes (spec-msg-codes (lookup-spec ver err))]
+               [data-bits (append (number->bits (case mode
+                                                  [(numeric)      #b0001]
+                                                  [(alphanumeric) #b0010]
+                                                  [(byte)         #b0100])
+                                                4)
+                                  (number->bits (string-length msg-string) (character-count-bits ver mode))
+                                  (encode-message msg-string mode)
+                                  (number->bits 0 4))]
+               [data (bits->bytes data-bits)]
+               [data (take data (min ncodes (length data)))])
+    (append data
+            (build-list (- ncodes (length data))
+                        (λ (i)                               
+                          (if (even? i)
+                              #b11101100
+                              #b00010001))))))
 
 
 (module+ test
   (check-equal? (msg-codewords "01234567" (configuration 1 'M 'numeric))
-		'(#b00010000 #b00100000 #b00001100 #b01010110 #b01100001 #b10000000 #b11101100 #b00010001 #b11101100
-		  #b00010001 #b11101100 #b00010001 #b11101100 #b00010001 #b11101100 #b00010001)))
+                '(#b00010000 #b00100000 #b00001100 #b01010110 #b01100001 #b10000000 #b11101100 #b00010001 #b11101100
+                             #b00010001 #b11101100 #b00010001 #b11101100 #b00010001 #b11101100 #b00010001)))
 
 (define (character-count-bits ver mode)
   (cdr (assq mode (cond 
-		   [(<= ver 9)  '((numeric . 10) (alphanumeric . 9)  (byte . 8)  (kanji . 8))]
-		   [(<= ver 26) '((numeric . 12) (alphanumeric . 11) (byte . 16) (kanji . 10))]
-		   [(<= ver 40) '((numeric . 14) (alphanumeric . 13) (byte . 16) (kanji . 12))]))))
+                    [(<= ver 9)  '((numeric . 10) (alphanumeric . 9)  (byte . 8)  (kanji . 8))]
+                    [(<= ver 26) '((numeric . 12) (alphanumeric . 11) (byte . 16) (kanji . 10))]
+                    [(<= ver 40) '((numeric . 14) (alphanumeric . 13) (byte . 16) (kanji . 12))]))))
 
-(define (best-version len err mode)
+(define (fit-version len err mode)
   (let ([sel (case mode 
-	       [(byte) spec-maxbyte]
-	       [(alphanumeric) spec-maxalphanumeric]
-	       [(numeric) spec-maxnumeric])]) 
+               [(byte) spec-maxbyte]
+               [(alphanumeric) spec-maxalphanumeric]
+               [(numeric) spec-maxnumeric])]) 
     (for/or ([v (in-range 1 41)])
       (and (>= (sel (lookup-spec v err)) len)
            v))))
 
 (module+ test
-  (check-eqv? (best-version 3 'L 'byte) 1)
-  (check-eqv? (best-version 1024 'Q 'byte) 31)
-  (check-eqv? (best-version 2954 'L 'byte) #f))
-
-;; (define (canhold? msg ver err mode)
-;;   (let ([sel (case mode [(byte) spec-maxbyte])]
-;;         [len (bytes-length msg)])
-;;     (>= (sel (lookup-spec ver err)) len)))
-
-;; (module+ test
-;;   (check-eq? (detect-mode "123") 'numeric)
-;;   (check-eq? (detect-mode #"HELLO YOU") 'alphanumeric)
-;;   (check-eq? (detect-mode #"RB14") 'alphanumeric)
-;;   (check-eq? (detect-mode #"user@example.com") 'byte))
-
-
-
-(define (match-alphanumeric? m)
-  (regexp-match-exact? #rx"[0-9A-Z $%*+-./:]+" m))
-
-(define (match-numeric? m)
-  (regexp-match-exact? #rx"[0-9]+" m))
+  (check-eqv? (fit-version 3 'L 'byte) 1)
+  (check-eqv? (fit-version 1024 'Q 'byte) 31)
+  (check-eqv? (fit-version 2954 'L 'byte) #f))
 
 (define (interleave-ec-codewords msgcodes config)
   (let* ([s (lookup-spec (configuration-version config) (configuration-error config))]
@@ -206,9 +195,9 @@
 (module+ test
   (let ([cfg (configuration 1 'M 'numeric)])
     (check-equal? (interleave-ec-codewords (msg-codewords "01234567" cfg) cfg)
-		  '(#b00010000 #b00100000 #b00001100 #b01010110 #b01100001 #b10000000 #b11101100 #b00010001 #b11101100 
-		    #b00010001 #b11101100 #b00010001 #b11101100 #b00010001 #b11101100 #b00010001 #b10100101 #b00100100 
-		    #b11010100 #b11000001 #b11101101 #b00110110 #b11000111 #b10000111 #b00101100 #b01010101))))
+                  '(#b00010000 #b00100000 #b00001100 #b01010110 #b01100001 #b10000000 #b11101100 #b00010001 #b11101100 
+                               #b00010001 #b11101100 #b00010001 #b11101100 #b00010001 #b11101100 #b00010001 #b10100101 #b00100100 
+                               #b11010100 #b11000001 #b11101101 #b00110110 #b11000111 #b10000111 #b00101100 #b01010101))))
 
 (define (format-information err mask-num)
   (let* ([errbits (case err
@@ -222,7 +211,7 @@
 
 (module+ test
   (check-equal? (format-information 'M #b010)
-		'(#t #f #t #t #t #t #f #f #t #t #t #t #t #f #f)))
+                '(#t #f #t #t #t #t #f #f #t #t #t #t #t #f #f)))
 
 (define (place-timing-patterns qr)
   (define s (bitarray-dimension qr))
@@ -431,7 +420,7 @@
 (define (bits->bytes bits)
   (let loop ([bits bits] [pos 7] [b 0] [bs '()])
     (cond [(null? bits) (reverse (cons b bs))]
-	  [(< pos 0) (loop bits 7 0 (cons b bs))]
+          [(< pos 0) (loop bits 7 0 (cons b bs))]
           [else (loop (cdr bits)
                       (- pos 1)
                       (if (car bits) 
@@ -490,11 +479,11 @@
 
 (define alphanumeric-tbl 
   #hasheq((#\0 . 0)  (#\1 . 1)  (#\2 . 2)  (#\3 . 3)  (#\4 . 4)      (#\5 . 5)  (#\6 . 6)  (#\7 . 7)  
-	  (#\8 . 8)  (#\9 . 9)  (#\A . 10) (#\B . 11) (#\C . 12)     (#\D . 13) (#\E . 14) (#\F . 15) 
-	  (#\G . 16) (#\H . 17) (#\I . 18) (#\J . 19) (#\K . 20)     (#\L . 21) (#\M . 22) (#\N . 23) 
-	  (#\O . 24) (#\P . 25) (#\Q . 26) (#\R . 27) (#\S . 28)     (#\T . 29) (#\U . 30) (#\V . 31) 
-	  (#\W . 32) (#\X . 33) (#\Y . 34) (#\Z . 35) (#\space . 36) (#\$ . 37) (#\% . 38) (#\* . 39) 
-	  (#\+ . 40) (#\- . 41) (#\. . 42) (#\/ . 43) (#\: . 44)))
+          (#\8 . 8)  (#\9 . 9)  (#\A . 10) (#\B . 11) (#\C . 12)     (#\D . 13) (#\E . 14) (#\F . 15) 
+          (#\G . 16) (#\H . 17) (#\I . 18) (#\J . 19) (#\K . 20)     (#\L . 21) (#\M . 22) (#\N . 23) 
+          (#\O . 24) (#\P . 25) (#\Q . 26) (#\R . 27) (#\S . 28)     (#\T . 29) (#\U . 30) (#\V . 31) 
+          (#\W . 32) (#\X . 33) (#\Y . 34) (#\Z . 35) (#\space . 36) (#\$ . 37) (#\% . 38) (#\* . 39) 
+          (#\+ . 40) (#\- . 41) (#\. . 42) (#\/ . 43) (#\: . 44)))
 
 (struct spec (msg-codes ec-codes ec1 ec2 maxnumeric maxalphanumeric maxbyte maxjanji))
 (define spec-tbl
