@@ -83,10 +83,44 @@
   (let* ([mode (or mode-hint
 		   (cond 
 		    [(match-numeric? msg-string) 'numeric]
-		    ;[(match-alphanumeric? msg-string) 'alphanumeric]		    
+		    [(match-alphanumeric? msg-string) 'alphanumeric]		    
 		    [else 'byte]))]
 	 [version (best-version (string-length msg-string) error mode)])
     (configuration version error mode)))
+
+(define (encode-message msg-string mode)
+  (case mode
+    [(numeric) 
+     (let*-values 
+	 ([(q r) (quotient/remainder (string-length msg-string) 3)]
+	  [(trips rest) (chunk-list (string->list msg-string) 3 q)]
+	  [(f) (λ (b) 
+		  (λ (l) (number->bits (string->number (list->string l)) b)))])
+       (append (append-map (f 10) trips)
+	       (case r
+		 [(0) '()]
+		 [(1) ((f 4) rest)]
+		 [(2) ((f 7) rest)])))]
+    [(alphanumeric) 
+     (let*-values 
+	 ([(q r) (quotient/remainder (string-length msg-string) 2)]
+	  [(pairs lone) (chunk-list (string->list msg-string) 2 q)]
+	  [(code) (λ (x) (hash-ref alphanumeric-tbl x))])
+       (append (append-map 
+		(λ (l) 
+		   (number->bits (+ (* 45 (code (car l))) (code (cadr l))) 11))
+		pairs)
+	       (if (= r 1) 
+		   (number->bits (code (car lone)) 6)
+		   '())))]
+    [(byte) 
+     (bytes->bits (bytes->list (string->bytes/latin-1 msg-string)))]))
+
+(module+ test
+  (check-equal? (encode-message "01234567" 'numeric)
+		'(#f #f #f #f #f #f #t #t #f #f #f #t #f #t #f #t #t #f #f #t #t #f #f #f #f #t #t))
+  (check-equal? (encode-message "AC-42" 'alphanumeric)
+		'(#f #f #t #t #t #f #f #t #t #t #f #t #t #t #f #f #t #t #t #f #f #t #f #f #f #f #t #f)))
 
 (define (msg-codewords msg-string config)
   (match-let* ([(configuration ver err mode) config]
@@ -107,28 +141,9 @@
 				     (if (even? i)
 					 #b11101100
 					 #b00010001))))))
-(define (encode-message msg-string mode)
-  (case mode
-    [(numeric) 
-     (let*-values 
-	 ([(q r) (quotient/remainder (string-length msg-string) 3)]
-	  [(trips rest) (chunk-list (string->list msg-string) 3 q)]
-	  [(f) (λ (b) 
-		  (λ (l) (number->bits (string->number (list->string l)) b)))])
-       (append (append-map (f 10) trips)
-	       (case r
-		 [(0) '()]
-		 [(1) ((f 4) rest)]
-		 [(2) ((f 7) rest)])))]
-    [(alphanumeric) 
-     (error "Can't do this yet")
-     ]
-    [(byte) 
-     (bytes->bits (bytes->list (string->bytes/latin-1 msg-string)))]))
+
 
 (module+ test
-  (check-equal? (encode-message "01234567" 'numeric)
-		'(#f #f #f #f #f #f #t #t #f #f #f #t #f #t #f #t #t #f #f #t #t #f #f #f #f #t #t))
   (check-equal? (msg-codewords "01234567" (configuration 1 'M 'numeric))
 		'(#b00010000 #b00100000 #b00001100 #b01010110 #b01100001 #b10000000 #b11101100 #b00010001 #b11101100
 		  #b00010001 #b11101100 #b00010001 #b11101100 #b00010001 #b11101100 #b00010001)))
@@ -472,6 +487,14 @@
                                  (and (= i f) (= j l))
                                  (and (= j f) (= i l))))
           (cons (- j 2) (- i 2))))))
+
+(define alphanumeric-tbl 
+  #hasheq((#\0 . 0)  (#\1 . 1)  (#\2 . 2)  (#\3 . 3)  (#\4 . 4)      (#\5 . 5)  (#\6 . 6)  (#\7 . 7)  
+	  (#\8 . 8)  (#\9 . 9)  (#\A . 10) (#\B . 11) (#\C . 12)     (#\D . 13) (#\E . 14) (#\F . 15) 
+	  (#\G . 16) (#\H . 17) (#\I . 18) (#\J . 19) (#\K . 20)     (#\L . 21) (#\M . 22) (#\N . 23) 
+	  (#\O . 24) (#\P . 25) (#\Q . 26) (#\R . 27) (#\S . 28)     (#\T . 29) (#\U . 30) (#\V . 31) 
+	  (#\W . 32) (#\X . 33) (#\Y . 34) (#\Z . 35) (#\space . 36) (#\$ . 37) (#\% . 38) (#\* . 39) 
+	  (#\+ . 40) (#\- . 41) (#\. . 42) (#\/ . 43) (#\: . 44)))
 
 (struct spec (msg-codes ec-codes ec1 ec2 maxnumeric maxalphanumeric maxbyte maxjanji))
 (define spec-tbl
