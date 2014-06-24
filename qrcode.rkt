@@ -18,13 +18,14 @@
 (provide 
  (struct-out configuration)
  (contract-out 
+  [make-qrcode (->* (string? error-level/c)
+                    (#:scale exact-positive-integer?
+		     #:filename string?)
+                    (or/c (is-a?/c bitmap%) boolean?))]
   [qrcode-encode (-> string? error-level/c 
                      (values bitarray? configuration?))]
   [qrcode-render (-> bitarray? exact-positive-integer? 
-                     (is-a?/c bitmap%))]
-  [make-qrcode (->* (string? error-level/c)
-                    (exact-positive-integer?)
-                    (is-a?/c bitmap%))]))
+                     (is-a?/c bitmap%))]))
 
 (module+ main
   (require racket/cmdline)
@@ -34,23 +35,32 @@
   (command-line 
    #:program "qrcode"
    #:once-each 
-   [("-l" "--errorlevel") lvl 
-                          "Error correction level: (L)ow, (M)edium, (Q)uartile, (H)igh (default M)"
-                          (error-level (string->symbol (string-upcase lvl)))]
-   [("-s" "--scale") s
-                     "Pixel scale factor (default 4)"
-                     (scale (string->number s))]    
+   [("-l" "--errorlevel") 
+    lvl 
+    "Error correction level: (L)ow, (M)edium, (Q)uartile, (H)igh (default M)"
+    (error-level (string->symbol (string-upcase lvl)))]
+   [("-s" "--scale") 
+    s
+    "Pixel scale factor (default 4)"
+    (scale (string->number s))]    
    #:args (filename . message)
    (let*-values ([(message) (string-join message)]
                  [(qr config) (qrcode-encode message (error-level))])
      (send (qrcode-render qr (scale)) save-file filename 'png)
      config)))
 
-(define (qrcode-encode msg-string err)
-  (let* ([config (make-configuration msg-string err)]
+(define (make-qrcode msg err #:scale [scale 4] #:filename [filename #f])
+  (define-values (qr _) (qrcode-encode msg err))
+  (define bitmap (qrcode-render qr scale))
+  (if filename
+      (send bitmap save-file filename 'png)
+      bitmap))
+
+(define (qrcode-encode msg err)
+  (let* ([config (make-configuration msg err)]
          [ver (configuration-version config)]
          [qr (make-bitarray (version->dimension ver))]
-         [mcws (msg-codewords msg-string config)]
+         [mcws (msg-codewords msg config)]
          [ecws (interleave-ec-codewords mcws config)])
     (place-timing-patterns qr)
     (place-finder-patterns qr)
@@ -79,29 +89,25 @@
     (send dc draw-bitmap (make-monochrome-bitmap dim dim (bitarray-data qr)) 4 4)
     bitmap))
 
-(define (make-qrcode msg-string err [scale 4])
-  (define-values (qr _) (qrcode-encode msg-string err))
-  (qrcode-render qr scale))
-
 (struct configuration (version error mode) #:transparent)
 
-(define (make-configuration msg-string err)
-  (let* ([mode (cond [(regexp-match-exact? #rx"[0-9]+" msg-string) 'numeric]
-                     [(regexp-match-exact? #rx"[0-9A-Z $%*+-./:]+" msg-string) 'alphanumeric]		    
+(define (make-configuration msg err)
+  (let* ([mode (cond [(regexp-match-exact? #rx"[0-9]+" msg) 'numeric]
+                     [(regexp-match-exact? #rx"[0-9A-Z $%*+-./:]+" msg) 'alphanumeric]		    
                      [else 'byte])]
-         [ver (fit-version (string-length msg-string) err mode)])
+         [ver (fit-version (string-length msg) err mode)])
     (if ver
         (configuration ver err mode)
         (raise-user-error 
          'Error "Data length ~a exceeds QR code capacity. (mode: ~a) (error-level: ~a)"
-         (string-length msg-string) mode err))))
+         (string-length msg) mode err))))
 
-(define (encode-message msg-string mode)
+(define (encode-message msg mode)
   (case mode
     [(numeric) 
      (let*-values 
-         ([(q r) (quotient/remainder (string-length msg-string) 3)]
-          [(trips rest) (chunk-list (string->list msg-string) 3 q)]
+         ([(q r) (quotient/remainder (string-length msg) 3)]
+          [(trips rest) (chunk-list (string->list msg) 3 q)]
           [(f) (λ (b) 
                  (λ (l) (number->bits (string->number (list->string l)) b)))])
        (append (append-map (f 10) trips)
@@ -111,8 +117,8 @@
                  [(2) ((f 7) rest)])))]
     [(alphanumeric) 
      (let*-values 
-         ([(q r) (quotient/remainder (string-length msg-string) 2)]
-          [(pairs lone) (chunk-list (string->list msg-string) 2 q)]
+         ([(q r) (quotient/remainder (string-length msg) 2)]
+          [(pairs lone) (chunk-list (string->list msg) 2 q)]
           [(code) (λ (x) (hash-ref alphanumeric-tbl x))])
        (append (append-map 
                 (λ (l) 
@@ -122,7 +128,7 @@
                    (number->bits (code (car lone)) 6)
                    '())))]
     [(byte) 
-     (bytes->bits (bytes->list (string->bytes/latin-1 msg-string)))]))
+     (bytes->bits (bytes->list (string->bytes/latin-1 msg)))]))
 
 (module+ test
   (check-equal? (encode-message "01234567" 'numeric)
@@ -130,7 +136,7 @@
   (check-equal? (encode-message "AC-42" 'alphanumeric)
                 '(#f #f #t #t #t #f #f #t #t #t #f #t #t #t #f #f #t #t #t #f #f #t #f #f #f #f #t #f)))
 
-(define (msg-codewords msg-string config)
+(define (msg-codewords msg config)
   (match-let* ([(configuration ver err mode) config]
                [ncodes (spec-msg-codes (lookup-spec ver err))]
                [data-bits (append (number->bits (case mode
@@ -138,8 +144,8 @@
                                                   [(alphanumeric) #b0010]
                                                   [(byte)         #b0100])
                                                 4)
-                                  (number->bits (string-length msg-string) (character-count-bits ver mode))
-                                  (encode-message msg-string mode)
+                                  (number->bits (string-length msg) (character-count-bits ver mode))
+                                  (encode-message msg mode)
                                   (number->bits 0 4))]
                [data (bits->bytes data-bits)]
                [data (take data (min ncodes (length data)))])
@@ -154,7 +160,7 @@
 (module+ test
   (check-equal? (msg-codewords "01234567" (configuration 1 'M 'numeric))
                 '(#b00010000 #b00100000 #b00001100 #b01010110 #b01100001 #b10000000 #b11101100 #b00010001 #b11101100
-                             #b00010001 #b11101100 #b00010001 #b11101100 #b00010001 #b11101100 #b00010001)))
+		 #b00010001 #b11101100 #b00010001 #b11101100 #b00010001 #b11101100 #b00010001)))
 
 (define (character-count-bits ver mode)
   (cdr (assq mode (cond 
@@ -196,8 +202,8 @@
   (let ([cfg (configuration 1 'M 'numeric)])
     (check-equal? (interleave-ec-codewords (msg-codewords "01234567" cfg) cfg)
                   '(#b00010000 #b00100000 #b00001100 #b01010110 #b01100001 #b10000000 #b11101100 #b00010001 #b11101100 
-                               #b00010001 #b11101100 #b00010001 #b11101100 #b00010001 #b11101100 #b00010001 #b10100101 #b00100100 
-                               #b11010100 #b11000001 #b11101101 #b00110110 #b11000111 #b10000111 #b00101100 #b01010101))))
+		    #b00010001 #b11101100 #b00010001 #b11101100 #b00010001 #b11101100 #b00010001 #b10100101 #b00100100 
+                    #b11010100 #b11000001 #b11101101 #b00110110 #b11000111 #b10000111 #b00101100 #b01010101))))
 
 (define (format-information err mask-num)
   (let* ([errbits (case err

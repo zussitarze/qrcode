@@ -13,6 +13,13 @@ Command line usage:
 racket qrcode.rkt -l Q hello.png Hello QR World
 ```
 
+Library usage:
+```racket
+#lang racket
+(require barcode/qrcode)
+(make-qrcode "github.com/zussitarze" 'Q #:filename "qr.png")
+```
+
 References:
 
 - ISO/IEC STANDARD 18004 (2006)
