@@ -39,8 +39,7 @@
 (define (gf+ x y)
   (bitwise-xor x y))
 
-(define (gf- x y)
-  (gf+ x y))
+(define gf- gf+)
 
 (define (gf* x y)
   (if (or (= 0 x) (= 0 y))
